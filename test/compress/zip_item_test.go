@@ -1,7 +1,7 @@
 package compress
 
 import (
-	"github.com/SunIBAS/gotool/compress"
+	"gotool/compress"
 	"testing"
 )
 
