@@ -4,14 +4,12 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
+	"gotool/FileDirUtils"
 	"io"
 	"os"
+	"path/filepath"
 )
 
-type ZipItem interface {
-	FilePath() string
-	WriteFile(writer *zip.Writer) error
-}
 type Zip struct {
 	ZipFilePath string
 	ZipItem     []ZipItem
@@ -19,6 +17,7 @@ type Zip struct {
 	zipWriter   *zip.Writer
 }
 
+// Close /////////////  Write zip file  ////////////////
 func (z *Zip) Close() error {
 	if err := z.zipWriter.Close(); err != nil {
 		return errors.New(fmt.Sprintf("[close] zipWriter {%v}", err))
@@ -28,16 +27,80 @@ func (z *Zip) Close() error {
 	}
 	return nil
 }
-func (z *Zip) Init() error {
+func (z *Zip) initForCompress() error {
 	var err error
-	z.zipFile, err = os.Create(z.ZipFilePath)
+	if FileDirUtils.FileIsExist(z.ZipFilePath) {
+		//z.zipFile, err = os.Open(z.ZipFilePath)
+		err = z.copyForNewWriter(z.ZipFilePath)
+	} else {
+		z.zipFile, err = os.Create(z.ZipFilePath)
+		z.zipWriter = zip.NewWriter(z.zipFile)
+	}
 	if err != nil {
 		return err
 	}
-	z.zipWriter = zip.NewWriter(z.zipFile)
+	return nil
+}
+func (z *Zip) copyForNewWriter(ZipFilePath string) error {
+	f := filepath.Base(ZipFilePath)
+	newF := ZipFilePath[:len(ZipFilePath)-len(f)] + "~" + f
+	err := os.Rename(ZipFilePath, newF)
+	if err != nil {
+		return err
+	}
+	sourceZipFile, err := zip.OpenReader(newF)
+	if err != nil {
+		return err
+	}
+	destZipFile, err := os.Create(f)
+	if err != nil {
+		return err
+	}
+	// 创建一个zip writer，指向目标ZIP文件
+	zipWriter := zip.NewWriter(destZipFile)
+	err = copyFilesToZip(sourceZipFile, zipWriter)
+	if err != nil {
+		return err
+	}
+	z.zipWriter = zipWriter
+	z.zipFile = destZipFile
+	if err := sourceZipFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(newF); err != nil {
+		fmt.Println("warning:", err)
+	}
+	return nil
+}
+func copyFilesToZip(source *zip.ReadCloser, dest *zip.Writer) error {
+	for _, file := range source.File {
+		sourceFile, err := file.Open()
+		if err != nil {
+			return err
+		}
+		defer sourceFile.Close()
+
+		destFile, err := dest.Create(file.Name)
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(destFile, sourceFile)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (z *Zip) Compress() error {
+	if e := z.initForCompress(); e != nil {
+		return e
+	}
+	defer func() {
+		if e := z.Close(); e != nil {
+			panic(e)
+		}
+	}()
 	for i := 0; i < len(z.ZipItem); i++ {
 		if err := z.ZipItem[i].WriteFile(z.zipWriter); err != nil {
 			return err
@@ -46,92 +109,17 @@ func (z *Zip) Compress() error {
 	return nil
 }
 
-type zipStringItem struct {
-	filePath string
-	content  string
-}
-
-func NewZipStringItem(filepath, content string) zipStringItem {
-	return zipStringItem{
-		filePath: filepath,
-		content:  content,
-	}
-}
-func (zsi zipStringItem) FilePath() string {
-	return zsi.filePath
-}
-func (zsi zipStringItem) WriteFile(writer *zip.Writer) error {
-	// 在压缩包根目录添加 _filelist_.txt 文件
-	filelist, err := writer.Create(zsi.filePath)
+// GetFiles /////////////  Read zip file  ////////////////
+func (z *Zip) GetFiles() []*zip.File {
+	r, err := zip.OpenReader(z.ZipFilePath)
 	if err != nil {
-		return err
+		fmt.Println("Error opening zip file:", err)
+		return nil
 	}
-	_, err = filelist.Write([]byte(zsi.content))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-type zipFileItem struct {
-	absoluteFilePath string
-	filePath         string
-}
-
-func NewZipFileItem(absoluteFilePath, filepath string) zipFileItem {
-	fileInfo, err := os.Stat(absoluteFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("File does not exist")
-		} else {
-			fmt.Println("Error:", err)
+	defer func() {
+		if err := r.Close(); err != nil {
+			panic(err)
 		}
-		return zipFileItem{}
-	}
-
-	if fileInfo.IsDir() {
-		return zipFileItem{}
-	} else {
-		//fmt.Println(absoluteFilePath, "is not a directory")
-		return zipFileItem{
-			absoluteFilePath: absoluteFilePath,
-			filePath:         filepath,
-		}
-	}
-}
-func (zsi zipFileItem) FilePath() string {
-	return zsi.filePath
-}
-func (zsi zipFileItem) WriteFile(writer *zip.Writer) error {
-	if zsi.absoluteFilePath == "" {
-		return errors.New(fmt.Sprintf("[%s] will be not file", zsi.absoluteFilePath))
-	}
-	// 在压缩包根目录添加 _filelist_.txt 文件
-	f, err := os.Open(zsi.absoluteFilePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	header, err := zip.FileInfoHeader(info)
-	if err != nil {
-		return err
-	}
-	header.Name = zsi.filePath
-	header.Method = zip.Deflate
-
-	w, err := writer.CreateHeader(header)
-	//file, err := os.Open(zsi.absoluteFilePath)
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(w, f)
-	if err != nil {
-		return err
-	}
-	return nil
+	}()
+	return r.File
 }
