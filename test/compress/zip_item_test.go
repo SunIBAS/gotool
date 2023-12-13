@@ -3,8 +3,8 @@ package compress
 import (
 	"archive/zip"
 	"fmt"
+	"github.com/SunIBAS/gotool/compress"
 	"github.com/google/uuid"
-	"gotool/compress"
 	"io"
 	"os"
 	"testing"
