@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
-	"os"
 	"strings"
 )
 
@@ -36,6 +36,7 @@ type geoAttributeValue struct {
 	LONG   []uint32
 	FLOAT  []float32
 	DOUBLE []float64
+	uint   []uint
 }
 
 type GeoAttributes []geoAttribute
@@ -44,13 +45,33 @@ type geoTifHeader struct {
 	Attribute GeoAttributes
 }
 
+type TiepointTransformationParameters struct {
+	I, J, K, X, Y, Z       float64
+	ScaleX, ScaleY, ScaleZ float64
+}
+type Meta struct {
+	Columns           uint
+	Rows              uint
+	BitsPerSample     []uint
+	samplesPerPixel   uint
+	SampleFormat      uint
+	PhotometricInterp uint
+	mode              ImageMode
+	palette           []uint32
+	TiepointData      TiepointTransformationParameters
+	NodataValue       string
+	RasterPixelIsArea bool
+	EPSGCode          uint
+}
 type GeoTif struct {
 	// 文件路径
 	FilePath     string
-	tFile        *os.File
+	tFile        io.ReaderAt
 	byteOrder    binary.ByteOrder
 	GeoTifHeader geoTifHeader
 	GeoKeys      GeoAttributes
+	Meta         Meta
+	Data         GeoData
 }
 
 func (g GeoTif) String() string {
@@ -141,24 +162,39 @@ func (gAttribute *geoAttribute) parseValue(order binary.ByteOrder) error {
 		LONG:   nil,
 		FLOAT:  nil,
 		DOUBLE: nil,
+		uint:   []uint{0},
 	}
 	switch gAttribute.Type {
 	case BYTE:
 		gAttribute.GeoAttributeValue.BYTE = gAttribute.SourceValue
 		gAttribute.GeoAttributeValue.rValue = gAttribute.SourceValue
+		gAttribute.GeoAttributeValue.uint = make([]uint, gAttribute.Len)
+		for i := 0; i < int(gAttribute.Len); i++ {
+			gAttribute.GeoAttributeValue.uint[i] = uint(gAttribute.SourceValue[i])
+		}
 	case ASCII:
 		gAttribute.GeoAttributeValue.ASCII = string(gAttribute.SourceValue)
 		gAttribute.GeoAttributeValue.rValue = string(gAttribute.SourceValue)
+		gAttribute.GeoAttributeValue.uint = make([]uint, gAttribute.Len)
+		for i := 0; i < int(gAttribute.Len); i++ {
+			gAttribute.GeoAttributeValue.uint[i] = uint(gAttribute.SourceValue[i])
+		}
 	case SHORT:
 		gAttribute.GeoAttributeValue.SHORT = make([]uint16, gAttribute.Len)
+		gAttribute.GeoAttributeValue.uint = make([]uint, gAttribute.Len)
 		for i := 0; i < int(gAttribute.Len); i++ {
-			gAttribute.GeoAttributeValue.SHORT[i] = order.Uint16(gAttribute.SourceValue[i*2 : i*2+2])
+			v := order.Uint16(gAttribute.SourceValue[i*2 : i*2+2])
+			gAttribute.GeoAttributeValue.SHORT[i] = v
+			gAttribute.GeoAttributeValue.uint[i] = uint(v)
 		}
 		gAttribute.GeoAttributeValue.rValue = gAttribute.GeoAttributeValue.SHORT
 	case LONG:
 		gAttribute.GeoAttributeValue.LONG = make([]uint32, gAttribute.Len)
+		gAttribute.GeoAttributeValue.uint = make([]uint, gAttribute.Len)
 		for i := 0; i < int(gAttribute.Len); i++ {
-			gAttribute.GeoAttributeValue.LONG[i] = order.Uint32(gAttribute.SourceValue[i*4 : i*4+4])
+			v := order.Uint32(gAttribute.SourceValue[i*4 : i*4+4])
+			gAttribute.GeoAttributeValue.LONG[i] = v
+			gAttribute.GeoAttributeValue.uint[i] = uint(v)
 		}
 		gAttribute.GeoAttributeValue.rValue = gAttribute.GeoAttributeValue.LONG
 	case FLOAT:
@@ -182,4 +218,8 @@ func (gAttribute *geoAttribute) parseValue(order binary.ByteOrder) error {
 // todo: for save to file
 func (geoAttribute geoAttribute) toBytes() {
 
+}
+
+func (gAtrribute geoAttribute) getValue() interface{} {
+	return gAtrribute.GeoAttributeValue.rValue
 }
