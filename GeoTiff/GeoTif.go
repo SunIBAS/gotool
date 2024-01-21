@@ -22,8 +22,8 @@ type geoAttribute struct {
 	GeoAttributeValue geoAttributeValue
 }
 
-func (geoAttribute geoAttribute) Bytes() uint32 {
-	return geoAttribute.Len * geoAttribute.Type.Bytes()
+func (gAttribute geoAttribute) Bytes() uint32 {
+	return gAttribute.Len * gAttribute.Type.Bytes()
 }
 
 var geoFileAttributeSize = int64(12)
@@ -45,10 +45,6 @@ type geoTifHeader struct {
 	Attribute GeoAttributes
 }
 
-type TiepointTransformationParameters struct {
-	I, J, K, X, Y, Z       float64
-	ScaleX, ScaleY, ScaleZ float64
-}
 type Meta struct {
 	Columns           uint
 	Rows              uint
@@ -58,7 +54,6 @@ type Meta struct {
 	PhotometricInterp uint
 	mode              ImageMode
 	palette           []uint32
-	TiepointData      TiepointTransformationParameters
 	NodataValue       string
 	RasterPixelIsArea bool
 	EPSGCode          uint
@@ -72,6 +67,7 @@ type GeoTif struct {
 	GeoKeys      GeoAttributes
 	Meta         Meta
 	Data         GeoData
+	Transform    transform
 }
 
 func (g GeoTif) String() string {
@@ -214,12 +210,29 @@ func (gAttribute *geoAttribute) parseValue(order binary.ByteOrder) error {
 	}
 	return nil
 }
+func (gAttribute geoAttribute) toFloat64() []float64 {
+	if gAttribute.Type == DOUBLE {
+		return gAttribute.GeoAttributeValue.DOUBLE
+	} else if gAttribute.Type == FLOAT {
+		var ret = make([]float64, gAttribute.Len)
+		for i := 0; i < int(gAttribute.Len); i++ {
+			ret[i] = float64(gAttribute.GeoAttributeValue.FLOAT[i])
+		}
+		return ret
+	} else {
+		var ret = make([]float64, gAttribute.Len)
+		for i := 0; i < int(gAttribute.Len); i++ {
+			ret = append(ret, float64(gAttribute.GeoAttributeValue.uint[i]))
+		}
+		return ret
+	}
+}
 
 // todo: for save to file
-func (geoAttribute geoAttribute) toBytes() {
+func (gAttribute geoAttribute) toBytes() {
 
 }
 
-func (gAtrribute geoAttribute) getValue() interface{} {
-	return gAtrribute.GeoAttributeValue.rValue
+func (gAttribute geoAttribute) getValue() interface{} {
+	return gAttribute.GeoAttributeValue.rValue
 }

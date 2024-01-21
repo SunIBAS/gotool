@@ -43,10 +43,14 @@ func (g *GeoTif) open() error {
 	if err = g.initMeta(); err != nil {
 		return gEC(WithFunction("open"), WithError(err))
 	}
+	g.Transform = transform{}
+	attrs := append(g.GeoKeys, g.GeoTifHeader.Attribute...)
+	if err = g.Transform.Init(attrs...); err != nil {
+		return gEC(WithFunction("open"), WithError(err))
+	}
 	if err = g.readData(); err != nil {
 		return gEC(WithFunction("open"), WithError(err))
 	}
-
 	return nil
 }
 
@@ -200,7 +204,6 @@ func (g *GeoTif) initMeta() error {
 		PhotometricInterp: getValue(PhotometricInterpretation)[0],
 		samplesPerPixel:   getValue(SamplesPerPixel)[0],
 		SampleFormat:      getValue(SampleFormat)[0],
-		TiepointData:      TiepointTransformationParameters{},
 
 		BitsPerSample:     nil,
 		RasterPixelIsArea: false,

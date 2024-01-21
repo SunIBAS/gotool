@@ -2,6 +2,8 @@ package GeoTiff
 
 import "encoding/binary"
 
+// https://github.com/grumets/MiraMonMapBrowser/blob/b997173bc0ee2ebd1d61567a0d4e33d1c44004a4/src/geotiff/compression/packbits.js#L4
+
 type bufConverter struct {
 	order binary.ByteOrder
 }
